@@ -42,12 +42,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--start", action="store_true", help="Cài, bật tự khởi động và chạy bot gửi thông báo")
     parser.add_argument("--print", dest="preview", action="store_true", help="Chỉ in cấu hình, không cài/chạy")
-    parser.add_argument("--interval", type=int, default=600)
+    parser.add_argument("--interval", type=int, default=60)
     parser.add_argument("--config", type=Path, default=HERE / "iuh_bot.env")
     parser.add_argument("--state-file", type=Path, default=HERE.parent / "work/iuh_event_state.json")
     args = parser.parse_args()
-    if args.interval < 300:
-        parser.error("Khoảng kiểm tra tối thiểu là 300 giây.")
+    if args.interval < 60:
+        parser.error("Khoảng kiểm tra tối thiểu là 60 giây.")
     if args.preview and args.start:
         parser.error("Không kết hợp --print và --start.")
     python = Path(sys.executable).absolute()
