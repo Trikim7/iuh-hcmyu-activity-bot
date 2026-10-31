@@ -180,6 +180,16 @@ Trường `sent` giữ tương thích với lịch sử cũ. Chạy local mặc 
 
 ## Kiểm thử và CAPTCHA
 
+### Lỗi chứng chỉ HTTPS IUH
+
+Bot bổ sung chứng chỉ trung gian RapidSSL TLS RSA CA G1 mà máy chủ IUH có thể
+gửi thiếu. Cách này áp dụng cho cả `/account`, tài khoản riêng và tài khoản chung;
+vẫn kiểm tra chứng chỉ gốc, tên miền và thời hạn. Không dùng `verify=False`.
+Nguồn và dấu vân tay chứng chỉ nằm trong [assets/TLS_CERTIFICATES.md](assets/TLS_CERTIFICATES.md).
+Sau khi cập nhật mã và cài lại requirements, khởi động lượt Actions mới để sử dụng bản sửa.
+Nếu lỗi xuất hiện khi liên kết tài khoản, bot thông báo lỗi kết nối thay vì yêu cầu
+người dùng kiểm tra lại mật khẩu.
+
 Chạy toàn bộ kiểm thử local:
 
 ```bash

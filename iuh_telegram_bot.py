@@ -9,6 +9,7 @@ import json
 import os
 import re
 import shutil
+import ssl
 import subprocess
 import sys
 import threading
@@ -32,6 +33,31 @@ RUNTIME_DIR = HERE.parent / "work"
 FRESH_HEADERS = {"Cache-Control": "no-cache, no-store", "Pragma": "no-cache"}
 STATE_LOCK = threading.RLock()
 TELEGRAM_API = "https://api.telegram.org/bot{token}/{method}"
+
+
+class IUHTLSAdapter(requests.adapters.HTTPAdapter):
+    """Bổ sung intermediate IUH bỏ sót, vẫn xác minh root, hạn và hostname."""
+
+    def __init__(self):
+        self.ssl_context = ssl.create_default_context(cafile=requests.certs.where())
+        self.ssl_context.load_verify_locations(
+            cafile=str(HERE / "assets" / "rapidssl-tls-rsa-ca-g1.pem"))
+        # Intermediate chỉ giúp nối chuỗi tới root tin cậy, không làm trust anchor.
+        self.ssl_context.verify_flags &= ~ssl.VERIFY_X509_PARTIAL_CHAIN
+        super().__init__()
+
+    def build_connection_pool_key_attributes(self, request, verify, cert=None):
+        host, pool = super().build_connection_pool_key_attributes(request, verify, cert)
+        if verify is True:
+            pool["ssl_context"] = self.ssl_context
+        return host, pool
+
+
+def configure_iuh_tls(session):
+    # Chỉ mount cho origin IUH; Telegram dùng bộ CA mặc định của Requests.
+    if not isinstance(session.adapters.get(BASE), IUHTLSAdapter):
+        session.mount(BASE, IUHTLSAdapter())
+    session.headers.update({"User-Agent": "Mozilla/5.0 IUH-event-notifier/1.0"})
 
 
 def default_config_path():
@@ -183,6 +209,7 @@ def captcha_candidates(image_bytes):
 
 
 def login(session, mssv, password, max_attempts=2):
+    configure_iuh_tls(session)
     for attempt in range(1, max_attempts + 1):
         page = session.get(LOGIN_URL, timeout=20)
         page.raise_for_status()
@@ -280,6 +307,7 @@ def is_open(event):
 
 
 def get_events(session, mssv, password):
+    configure_iuh_tls(session)
     response = session.get(EVENT_URL, headers=FRESH_HEADERS, timeout=20)
     if response.status_code not in (401, 403):
         response.raise_for_status()
@@ -495,6 +523,12 @@ class TelegramCommandListener:
         try:
             with requests.Session() as iuh_session:
                 get_events(iuh_session, mssv, value)
+        except requests.exceptions.SSLError:
+            self.send_text(session, chat_id, "Kết nối bảo mật tới IUH đang lỗi chứng chỉ. Mình chưa lưu mật khẩu; lỗi này chưa xác định tài khoản đúng hay sai. Hãy thử lại sau khi bot được khắc phục.")
+            return
+        except (requests.ConnectionError, requests.Timeout):
+            self.send_text(session, chat_id, "Hiện không kết nối được IUH. Mình chưa lưu mật khẩu; hãy thử lại sau.")
+            return
         except (requests.RequestException, RuntimeError, ValueError):
             self.send_text(session, chat_id, "IUH chưa xác nhận đăng nhập. Mình không lưu mật khẩu; hãy kiểm tra và gửi lại.")
             return
