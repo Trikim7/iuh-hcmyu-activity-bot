@@ -787,13 +787,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--once", action="store_true", help="Kiểm tra một lần rồi thoát")
     parser.add_argument("--login-only", action="store_true", help="Chỉ kiểm tra đăng nhập và danh sách sự kiện")
-    parser.add_argument("--interval", type=int, default=120, help="Giây giữa hai lần kiểm tra (mặc định 120)")
+    parser.add_argument("--interval", type=int, default=60, help="Giây chờ sau mỗi lượt kiểm tra (mặc định 60)")
     parser.add_argument("--config", type=Path, default=default_config_path())
     parser.add_argument("--state-file", type=Path, default=RUNTIME_DIR / "iuh_event_state.json",
                         help="Tệp lưu các hoạt động đã thông báo")
     args = parser.parse_args()
-    if args.interval < 120:
-        parser.error("Khoảng kiểm tra tối thiểu là 120 giây.")
+    if args.interval < 60:
+        parser.error("Khoảng kiểm tra tối thiểu là 60 giây.")
     try:
         load_config(args.config)
         require_config(["IUH_MSSV", "IUH_PASSWORD"])

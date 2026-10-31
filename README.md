@@ -88,11 +88,11 @@ venv/bin/python iuh_telegram_bot.py --once
 venv/bin/python -u iuh_telegram_bot.py
 ```
 
-Mặc định bot kiểm tra mỗi 2 phút. Nhấn `Ctrl+C` để dừng. Khoảng kiểm tra tối thiểu là 120 giây. Có thể chỉ định khoảng khác, cấu hình riêng và tệp lịch sử:
+Mặc định bot chờ 60 giây sau mỗi lượt kiểm tra. Chu kỳ thực tế gồm thời gian đọc các tài khoản cộng 60 giây chờ. Nhấn `Ctrl+C` để dừng. Khoảng chờ tối thiểu là 60 giây. Có thể chỉ định khoảng khác, cấu hình riêng và tệp lịch sử:
 
 ```bash
 venv/bin/python -u iuh_telegram_bot.py \
-  --interval 120 \
+  --interval 60 \
   --config /path/to/iuh_bot.env \
   --state-file runtime/iuh_event_state.json
 ```
@@ -103,7 +103,9 @@ Khi chạy liên tục, bot đồng thời nhận lệnh trong chat riêng: `/st
 
 ## GitHub Actions
 
-Workflow [`iuh-bot.yml`](.github/workflows/iuh-bot.yml) giữ bot chạy liên tục trên runner và kiểm tra IUH mỗi 2 phút. Lịch cron khởi động phiên tiếp theo mỗi 5 phút; concurrency giữ tối đa một lượt kế tiếp trong hàng đợi để tiếp tục sau khi job hiện tại kết thúc. Mỗi job GitHub-hosted tối đa 6 giờ, nên đây là cách nối các phiên liên tục trên Actions chứ không phải một tiến trình vô hạn. Trong phiên chạy liên tục, bot đọc lệnh Telegram gần như ngay lập tức qua long polling.
+Workflow [`iuh-bot.yml`](.github/workflows/iuh-bot.yml) giữ bot chạy liên tục trên runner và chờ 60 giây giữa các lượt quét IUH. Lịch cron khởi động phiên tiếp theo mỗi 5 phút; concurrency giữ tối đa một lượt kế tiếp trong hàng đợi để tiếp tục sau khi job hiện tại kết thúc. Mỗi job GitHub-hosted tối đa 6 giờ, nên đây là cách nối các phiên liên tục trên Actions chứ không phải một tiến trình vô hạn. Trong phiên chạy liên tục, bot đọc lệnh Telegram gần như ngay lập tức qua long polling.
+
+Khi cập nhật chu kỳ, để job đang hoạt động chạy đến hết và xếp bản mới vào hàng đợi; không hủy job đang nhận lệnh. Phiên mới khôi phục tài khoản, bật/tắt thông báo, lịch sử gửi và vị trí lệnh từ `bot-state` bằng cùng `SUBSCRIBER_STATE_KEY`. Người dùng không cần `/account` lại. Cookie IUH nằm trong bộ nhớ của runner nên phiên mới tự đăng nhập lại từ thông tin đã lưu. Việc chuyển runner vẫn có thể có khoảng chờ khởi động; GitHub Actions không đảm bảo nhận tin liên tục tuyệt đối.
 
 ### Thêm thông tin bí mật
 

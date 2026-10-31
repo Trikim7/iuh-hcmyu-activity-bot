@@ -78,7 +78,7 @@ jobs:
             ) &
             state_sync_pid=$!
             trap 'kill "$state_sync_pid" 2>/dev/null || true' EXIT
-            python -u iuh_telegram_bot.py --config /dev/null --state-file runtime/iuh_event_state.json --interval 120
+            python -u iuh_telegram_bot.py --config /dev/null --state-file runtime/iuh_event_state.json --interval 60
           elif [ "$SEND_NOTIFICATIONS" = 'true' ]; then
             python -u iuh_telegram_bot.py --once --config /dev/null --state-file runtime/iuh_event_state.json
           else
