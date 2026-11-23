@@ -124,6 +124,10 @@ cung cấp sự kiện cho cả hai kênh, tránh đăng nhập/quét thêm cho 
 API chính thức: https://docs.zaloplatforms.com/docs/BOT/apis/getUpdates
 và https://docs.zaloplatforms.com/docs/BOT/apis/sendMessage.
 Zalo polling trả một sự kiện mỗi lần (không phải danh sách/offset như Telegram).
+Mã `408` của `getUpdates` nghĩa là chưa có sự kiện trong thời gian chờ; bot tiếp
+tục polling bình thường, không ghi lỗi hoặc áp dụng chờ lỗi 5 giây. Lỗi API khác
+được ghi kèm tên phương thức và mã lỗi, che token/URL. Lỗi xử lý tin chỉ ghi loại
+ngoại lệ để tránh lộ nội dung người dùng.
 Không cấu hình webhook đồng thời với polling. Tài liệu Zalo khuyến nghị webhook
 cho production vì polling có thể bỏ lỡ sự kiện khi runner ngừng; triển khai này
 dùng polling theo hạ tầng Actions hiện có. Chuyển runner vẫn có khoảng khởi động.
