@@ -1,4 +1,6 @@
 import os
+import io
+import contextlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -128,6 +130,40 @@ class ZaloTests(unittest.TestCase):
         self.assertIsNone(self.channel.api(session, 'getWebhookInfo'))
         with self.assertRaises(RuntimeError):
             self.channel.api(session, 'getMe')
+
+    def test_idle_polling_timeout_in_http_or_json_is_normal(self):
+        for http_status, body in ((408, None), (200, {'ok': False, 'error_code': 408}),
+                                  (200, {'ok': False, 'error_code': '408'})):
+            with self.subTest(http_status=http_status, body=body):
+                session = Mock()
+                session.post.return_value.status_code = http_status
+                session.post.return_value.ok = http_status == 200
+                session.post.return_value.json.return_value = body
+                self.assertIsNone(self.channel.api(session, 'getUpdates', timeout=20))
+                with self.assertRaises(RuntimeError):
+                    self.channel.api(session, 'sendMessage', chat_id='x', text='test')
+
+    def test_real_polling_errors_keep_sanitized_details(self):
+        session = Mock()
+        session.post.return_value.ok = True
+        session.post.return_value.json.return_value = {'ok': False, 'error_code': 401,
+            'description': 'bad zalo-secret at https://example/botzalo-secret/getUpdates'}
+        with self.assertRaises(RuntimeError) as error:
+            self.channel.api(session, 'getUpdates')
+        self.assertIn('401', str(error.exception))
+        self.assertNotIn('zalo-secret', str(error.exception))
+        self.assertNotIn('https://', str(error.exception))
+
+    def test_idle_loop_does_not_log_error_or_wait_five_seconds(self):
+        output = io.StringIO()
+        with patch.object(self.channel, 'api', side_effect=[{}, None, None]), \
+                patch.object(self.channel.stop_event, 'is_set', side_effect=[False, True]), \
+                patch.object(self.channel.stop_event, 'wait') as wait, \
+                contextlib.redirect_stdout(output):
+            self.channel.run()
+        wait.assert_called_once_with(1)
+        self.assertNotIn('Thử lại', output.getvalue())
+        self.assertNotIn('xử lý lệnh', output.getvalue())
 
 
 if __name__ == '__main__':

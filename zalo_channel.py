@@ -41,10 +41,15 @@ class ZaloChannel:
         try:
             response = session.post(f'https://bot-api.zaloplatforms.com/bot{self.token}/{method}',
                                     json=payload, timeout=40)
+            if method == 'getUpdates' and response.status_code == 408:
+                return None
             if not response.ok:
                 raise RuntimeError(f'Zalo {method}: HTTP {response.status_code}.')
             body = response.json()
             if not body.get('ok'):
+                # Official error-code docs: no incoming event during long polling.
+                if method == 'getUpdates' and str(body.get('error_code')) == '408':
+                    return None
                 # Live API returns 404/Not Found when no webhook exists.
                 if method == 'getWebhookInfo' and body.get('error_code') == 404:
                     return None
@@ -168,10 +173,17 @@ class ZaloChannel:
             while not self.stop_event.is_set():
                 try:
                     update = self.api(session, 'getUpdates', timeout=20)
-                    if isinstance(update, dict):
-                        self.handle(session, update)
-                    else:
-                        self.stop_event.wait(1)
-                except (RuntimeError, ValueError, OSError):
-                    print('Zalo: chưa nhận/xử lý được lệnh; thử lại sau 5 giây.')
+                except RuntimeError as error:
+                    # api() sanitizes token-bearing URLs and API descriptions.
+                    print(f'Zalo nhận lệnh: {error} Thử lại sau 5 giây.')
+                    self.stop_event.wait(5)
+                    continue
+                if not isinstance(update, dict):
+                    self.stop_event.wait(1)
+                    continue
+                try:
+                    self.handle(session, update)
+                except (RuntimeError, ValueError, OSError) as error:
+                    # Processing errors can contain user input: log only the type.
+                    print(f'Zalo xử lý lệnh: {type(error).__name__}; kiểm tra lưu trạng thái hoặc gửi phản hồi.')
                     self.stop_event.wait(5)
