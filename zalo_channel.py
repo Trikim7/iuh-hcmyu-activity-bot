@@ -45,6 +45,9 @@ class ZaloChannel:
                 raise RuntimeError(f'Zalo {method}: HTTP {response.status_code}.')
             body = response.json()
             if not body.get('ok'):
+                # Live API returns 404/Not Found when no webhook exists.
+                if method == 'getWebhookInfo' and body.get('error_code') == 404:
+                    return None
                 detail = str(body.get('description') or body.get('message') or '')
                 detail = re.sub(r'https?://\S+', '[URL]', detail.replace(self.token, '[TOKEN]'))[:200]
                 raise RuntimeError(f"Zalo {method}: lỗi {body.get('error_code', 'unknown')} {detail}")
@@ -156,6 +159,9 @@ class ZaloChannel:
         with requests.Session() as session:
             try:
                 self.api(session, 'getMe')
+                if (self.api(session, 'getWebhookInfo') or {}).get('url'):
+                    print('Zalo: webhook đang bật; chưa chạy polling để tránh xung đột.')
+                    return
                 print('Zalo: token hợp lệ, đang nhận lệnh.')
             except RuntimeError as error:
                 print(str(error))
