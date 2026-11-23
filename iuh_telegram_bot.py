@@ -742,12 +742,14 @@ def check_once(session, state_file, mssv, password, token=None, chat_id=None,
         if shared_targets or not targets or (zalo_channel and zalo_channel.needs_shared()):
             events = get_events(session, mssv, password)
             open_events = [event for event in events if is_open(event)]
-            for subscriber_id in shared_targets:
-                deliver_events(session, state_file, token, subscriber_id, open_events,
-                               legacy_chat_id=chat_id)
+            try:
+                for subscriber_id in shared_targets:
+                    deliver_events(session, state_file, token, subscriber_id, open_events,
+                                   legacy_chat_id=chat_id)
+            finally:
+                if zalo_channel:
+                    zalo_channel.deliver(session, None, open_events)
             print(f"Danh sách chung: {len(events)} hoạt động, {len(open_events)} còn mở.")
-            if zalo_channel:
-                zalo_channel.deliver(session, None, open_events)
     finally:
         if owned_sessions:
             for _, personal_session in personal_sessions.values():

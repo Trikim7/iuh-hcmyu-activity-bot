@@ -1,6 +1,7 @@
 """Zalo Bot API channel; state shares the existing encrypted subscriber store."""
 import hashlib
 import os
+import re
 import secrets
 import threading
 import time
@@ -44,7 +45,12 @@ class ZaloChannel:
                 raise RuntimeError(f'Zalo {method}: HTTP {response.status_code}.')
             body = response.json()
             if not body.get('ok'):
-                raise RuntimeError(f'Zalo chưa xác nhận {method}.')
+                # Live API returns 404/Not Found when no webhook exists.
+                if method == 'getWebhookInfo' and body.get('error_code') == 404:
+                    return None
+                detail = str(body.get('description') or body.get('message') or '')
+                detail = re.sub(r'https?://\S+', '[URL]', detail.replace(self.token, '[TOKEN]'))[:200]
+                raise RuntimeError(f"Zalo {method}: lỗi {body.get('error_code', 'unknown')} {detail}")
             return body.get('result')
         except (requests.RequestException, ValueError):
             # Requests exceptions contain credential-bearing URLs. Never surface them.
@@ -153,6 +159,9 @@ class ZaloChannel:
         with requests.Session() as session:
             try:
                 self.api(session, 'getMe')
+                if (self.api(session, 'getWebhookInfo') or {}).get('url'):
+                    print('Zalo: webhook đang bật; chưa chạy polling để tránh xung đột.')
+                    return
                 print('Zalo: token hợp lệ, đang nhận lệnh.')
             except RuntimeError as error:
                 print(str(error))

@@ -121,6 +121,14 @@ class ZaloTests(unittest.TestCase):
         self.sent.assert_not_called()
         self.assertNotIn('zalo_subscribers', self.channel.read())
 
+    def test_missing_webhook_is_not_an_authentication_failure(self):
+        session = Mock()
+        session.post.return_value.ok = True
+        session.post.return_value.json.return_value = {'ok': False, 'error_code': 404, 'description': 'Not Found'}
+        self.assertIsNone(self.channel.api(session, 'getWebhookInfo'))
+        with self.assertRaises(RuntimeError):
+            self.channel.api(session, 'getMe')
+
 
 if __name__ == '__main__':
     unittest.main()
