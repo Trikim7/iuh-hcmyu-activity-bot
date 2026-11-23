@@ -448,6 +448,7 @@ def command_text(command, enabled=True):
                 "/stop — tạm dừng thông báo\n"
                 "/account — nhận thông báo theo tài khoản IUH riêng\n"
                 "/forget — xóa tài khoản IUH đã lưu\n"
+                "/link — lấy mã liên kết nhận tin trên Zalo\n"
                 "/help — xem hướng dẫn\n\n"
                 "Bot chỉ gửi thông báo; bạn tự đăng ký trên cổng IUH. Đây là bot cộng đồng độc lập.")
     if command == "status":
@@ -598,6 +599,14 @@ class TelegramCommandListener:
                     response = ("Hãy gửi MSSV trong tin nhắn tiếp theo. Bot sẽ xóa tin sau khi nhận. "
                                 "Sau đó bot sẽ hỏi mật khẩu để kiểm tra đăng nhập IUH. "
                                 "Tin nhắn với bot có thể được Telegram và người vận hành bot xử lý; không phải Secret Chat.")
+            elif command == "link":
+                if os.environ.get("ZALO_BOT_TOKEN"):
+                    from zalo_channel import issue_link
+                    code = issue_link(sys.modules[__name__], self.state_file, self.token,
+                                      chat_id, self.legacy_chat_id)
+                    response = f"Gửi lệnh sau vào bot Zalo của bạn trong 10 phút:\n/link {code}\nMã dùng một lần; không chia sẻ cho người khác."
+                else:
+                    response = "Kênh Zalo chưa được cấu hình."
             elif command == "forget":
                 if subscriber is not None:
                     for key in ("mssv", "password", "pending_mssv", "pending_account", "auto_register"):
@@ -668,7 +677,7 @@ def deliver_events(session, state_file, token, chat_id, events, expected_mssv=No
 
 
 def check_once(session, state_file, mssv, password, token=None, chat_id=None,
-               personal_sessions=None, personal_retry=None):
+               personal_sessions=None, personal_retry=None, zalo_channel=None):
     if not token:
         events = get_events(session, mssv, password)
         open_events = [e for e in events if is_open(e)]
@@ -682,7 +691,9 @@ def check_once(session, state_file, mssv, password, token=None, chat_id=None,
     personal_retry = {} if personal_retry is None else personal_retry
     with STATE_LOCK:
         subscribers = read_subscribers(read_state(state_file), token, chat_id)["subscribers"]
-        targets = {key: item.copy() for key, item in subscribers.items() if item["enabled"]}
+        zalo_sources = zalo_channel.source_ids() if zalo_channel else set()
+        targets = {key: item.copy() for key, item in subscribers.items()
+                   if item["enabled"] or key in zalo_sources}
 
     try:
         active_personal = {key for key, item in targets.items() if item.get("mssv") and item.get("password")}
@@ -714,8 +725,12 @@ def check_once(session, state_file, mssv, password, token=None, chat_id=None,
                 events = get_events(personal_session, mssv_personal, password_personal)
                 personal_retry.pop(subscriber_id, None)
                 open_events = [event for event in events if is_open(event)]
-                deliver_events(session, state_file, token, subscriber_id, open_events, mssv_personal,
-                               chat_id)
+                try:
+                    deliver_events(session, state_file, token, subscriber_id, open_events, mssv_personal,
+                                   chat_id)
+                finally:
+                    if zalo_channel:
+                        zalo_channel.deliver(session, subscriber_id, open_events)
                 print(f"Tài khoản riêng: {len(events)} hoạt động, {len(open_events)} còn mở.")
             except (requests.RequestException, RuntimeError, ValueError) as exc:
                 personal_retry[subscriber_id] = (credential_id,
@@ -724,13 +739,15 @@ def check_once(session, state_file, mssv, password, token=None, chat_id=None,
                 print("Không đọc được hoạt động của một tài khoản riêng; sẽ thử lại sau.", file=sys.stderr)
 
         shared_targets = [key for key in targets if key not in active_personal]
-        if shared_targets or not targets:
+        if shared_targets or not targets or (zalo_channel and zalo_channel.needs_shared()):
             events = get_events(session, mssv, password)
             open_events = [event for event in events if is_open(event)]
             for subscriber_id in shared_targets:
                 deliver_events(session, state_file, token, subscriber_id, open_events,
                                legacy_chat_id=chat_id)
             print(f"Danh sách chung: {len(events)} hoạt động, {len(open_events)} còn mở.")
+            if zalo_channel:
+                zalo_channel.deliver(session, None, open_events)
     finally:
         if owned_sessions:
             for _, personal_session in personal_sessions.values():
@@ -747,6 +764,17 @@ def monitor(session, state_file, args):
     personal_sessions = {}
     personal_retry = {}
     listener = None
+    zalo = None
+    if not args.login_only and os.environ.get("ZALO_BOT_TOKEN"):
+        if len(os.environ.get("SUBSCRIBER_STATE_KEY", "")) >= 32:
+            from zalo_channel import ZaloChannel
+            zalo = ZaloChannel(sys.modules[__name__], state_file,
+                               os.environ["TELEGRAM_BOT_TOKEN"], os.environ["ZALO_BOT_TOKEN"],
+                               os.environ.get("TELEGRAM_CHAT_ID"))
+            if not args.once:
+                zalo.start()
+        else:
+            print("Chưa bật Zalo: cần SUBSCRIBER_STATE_KEY từ 32 ký tự.")
     if not args.once and not args.login_only:
         listener = TelegramCommandListener(os.environ["TELEGRAM_BOT_TOKEN"],
                                            state_file, os.environ.get("TELEGRAM_CHAT_ID"))
@@ -759,7 +787,7 @@ def monitor(session, state_file, args):
             check_once(session, state_file, os.environ["IUH_MSSV"], os.environ["IUH_PASSWORD"],
                        None if args.login_only else os.environ["TELEGRAM_BOT_TOKEN"],
                        None if args.login_only else os.environ.get("TELEGRAM_CHAT_ID"),
-                       personal_sessions, personal_retry)
+                       personal_sessions, personal_retry, **({"zalo_channel": zalo} if zalo else {}))
             failures = 0
         except (requests.RequestException, RuntimeError, ValueError, OSError) as exc:
             print(f"Lỗi: {exc}", file=sys.stderr)
@@ -778,6 +806,8 @@ def monitor(session, state_file, args):
         except KeyboardInterrupt:
             if listener:
                 listener.stop()
+            if zalo:
+                zalo.stop()
             for _, personal_session in personal_sessions.values():
                 personal_session.close()
             raise
