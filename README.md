@@ -103,6 +103,31 @@ Khi chạy liên tục, bot đồng thời nhận lệnh trong chat riêng: `/st
 
 ## GitHub Actions
 
+### Kênh Zalo
+
+Thêm secret `ZALO_BOT_TOKEN` để bật Zalo song song với Telegram. Bot cần
+`SUBSCRIBER_STATE_KEY` hiện tại (ít nhất 32 ký tự); giữ nguyên khóa này để đọc
+được tài khoản đã lưu. Không cần di chuyển hoặc nhập lại tài khoản Telegram.
+
+Trên Zalo: `/start`, `/stop`, `/status`, `/help`. Mặc định nhận hoạt động chung.
+Để nhận danh sách cá nhân, gửi `/link` trên Telegram, sau đó gửi `/link MA`
+trong bot Zalo. Mã ngẫu nhiên dùng một lần, hạn 10 phút; chỉ mã băm được lưu.
+Zalo chỉ lưu liên kết tới người dùng Telegram, không sao chép mật khẩu.
+`/unlink` trên Zalo gỡ liên kết; bật/tắt hai kênh độc lập. Nếu `/forget` trên
+Telegram xóa tài khoản IUH, Zalo chuyển về nguồn chung.
+
+Danh sách người nhận Zalo, liên kết và lịch sử chống trùng được mã hóa trong
+cùng `subscribers_encrypted`. Giữ nguyên dữ liệu Telegram và vị trí lệnh.
+Lỗi gửi Zalo sẽ được thử lại, không chặn gửi Telegram. Cùng một lượt quét IUH
+cung cấp sự kiện cho cả hai kênh, tránh đăng nhập/quét thêm cho Zalo.
+
+API chính thức: https://docs.zaloplatforms.com/docs/BOT/apis/getUpdates
+và https://docs.zaloplatforms.com/docs/BOT/apis/sendMessage.
+Zalo polling trả một sự kiện mỗi lần (không phải danh sách/offset như Telegram).
+Không cấu hình webhook đồng thời với polling. Tài liệu Zalo khuyến nghị webhook
+cho production vì polling có thể bỏ lỡ sự kiện khi runner ngừng; triển khai này
+dùng polling theo hạ tầng Actions hiện có. Chuyển runner vẫn có khoảng khởi động.
+
 Workflow [`iuh-bot.yml`](.github/workflows/iuh-bot.yml) giữ bot chạy liên tục trên runner và chờ 60 giây giữa các lượt quét IUH. Lịch cron khởi động phiên tiếp theo mỗi 5 phút; concurrency giữ tối đa một lượt kế tiếp trong hàng đợi để tiếp tục sau khi job hiện tại kết thúc. Mỗi job GitHub-hosted tối đa 6 giờ, nên đây là cách nối các phiên liên tục trên Actions chứ không phải một tiến trình vô hạn. Trong phiên chạy liên tục, bot đọc lệnh Telegram gần như ngay lập tức qua long polling.
 
 Khi cập nhật chu kỳ, để job đang hoạt động chạy đến hết và xếp bản mới vào hàng đợi; không hủy job đang nhận lệnh. Phiên mới khôi phục tài khoản, bật/tắt thông báo, lịch sử gửi và vị trí lệnh từ `bot-state` bằng cùng `SUBSCRIBER_STATE_KEY`. Người dùng không cần `/account` lại. Cookie IUH nằm trong bộ nhớ của runner nên phiên mới tự đăng nhập lại từ thông tin đã lưu. Việc chuyển runner vẫn có thể có khoảng chờ khởi động; GitHub Actions không đảm bảo nhận tin liên tục tuyệt đối.

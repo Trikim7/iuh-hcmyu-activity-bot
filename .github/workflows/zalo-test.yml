@@ -1,0 +1,50 @@
+name: Verify Zalo integration
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Unit and integration regression tests
+        run: python -m unittest -q
+      - name: Restore existing state read only
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python github_state.py restore runtime/state.json
+      - name: Verify current secrets and state compatibility
+        env:
+          ZALO_BOT_TOKEN: ${{ secrets.ZALO_BOT_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          SUBSCRIBER_STATE_KEY: ${{ secrets.SUBSCRIBER_STATE_KEY }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import requests
+          import iuh_telegram_bot as bot
+          from zalo_channel import ZaloChannel
+          path = Path('runtime/state.json')
+          before = path.read_bytes()
+          channel = ZaloChannel(bot, path, os.environ['TELEGRAM_BOT_TOKEN'], os.environ['ZALO_BOT_TOKEN'])
+          data = channel.read()
+          print('Encrypted Telegram subscriber state decrypted successfully.')
+          with requests.Session() as session:
+              channel.api(session, 'getMe')
+              print('Zalo getMe: OK; configured token is valid.')
+              info = channel.api(session, 'getWebhookInfo') or {}
+              if info.get('url'):
+                  raise SystemExit('Zalo webhook is configured. Resolve webhook/polling mode before enabling the listener.')
+              print('Zalo webhook: none; polling is available.')
+          assert path.read_bytes() == before
+          print('Existing subscriber state unchanged. No user messages consumed or sent.')
+          PY
